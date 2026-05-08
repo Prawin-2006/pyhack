@@ -4,11 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-API_KEY = "amigo123"
+# ===== CONFIG =====
+API_KEY = "amigo123"   # change this
+state = {"value": 0}   # 0=Idle, 1=Shutdown, 2=Restart, 3=Sleep
 
-state = {"value": 0}
-target_app = {"name": ""}
-
+# ===== CORS =====
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,12 +17,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ===== API =====
 @app.get("/state")
 def get_state():
-    return {
-        "state": state["value"],
-        "target": target_app["name"]
-    }
+    return {"state": state["value"]}
+
 
 @app.post("/state")
 async def set_state(request: Request):
@@ -33,95 +32,94 @@ async def set_state(request: Request):
 
     data = await request.json()
     value = int(data.get("state", 0))
-    app_name = data.get("target", "")
 
-    if value not in (0, 1, 2, 3, 4, 5):
-        return JSONResponse({"error": "state must be 0–5"}, status_code=400)
+    if value not in (0, 1, 2, 3):
+        return JSONResponse({"error": "state must be 0–3"}, status_code=400)
 
     state["value"] = value
-    target_app["name"] = app_name
+    return {"state": state["value"]}
 
-    return {
-        "state": state["value"],
-        "target": target_app["name"]
-    }
 
+# ===== UI =====
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return f"""
+    return """
 <!DOCTYPE html>
 <html>
 <head>
-<title>Amigo Control</title>
-<style>
-body {{
-    background:#111;
-    color:white;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    height:100vh;
-    font-family:Arial;
-}}
-.btn {{
-    padding:15px;
-    margin:10px;
-    font-size:1.2rem;
-    border:none;
-    border-radius:10px;
-    cursor:pointer;
-    width:220px;
-}}
-.shutdown {{background:red;}}
-.restart {{background:orange;}}
-.sleep {{background:blue;}}
-.idle {{background:gray;}}
-.force {{background:purple;}}
-
-input {{
-    padding:10px;
-    margin-top:10px;
-    border-radius:8px;
-    border:none;
-    width:220px;
-}}
-</style>
+    <title>Amigo Remote Control</title>
+    <meta charset="UTF-8" />
+    <style>
+        body {
+            background: #111;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial;
+        }
+        h1 { margin-bottom: 20px; }
+        .btn {
+            font-size: 1.5rem;
+            padding: 15px 25px;
+            margin: 10px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 200px;
+        }
+        .shutdown { background: red; }
+        .restart { background: orange; }
+        .sleep { background: blue; }
+        .idle { background: gray; }
+        #status {
+            margin-top: 20px;
+            font-size: 1.2rem;
+        }
+    </style>
 </head>
 <body>
 
-<h2>🖥️ Amigo Remote</h2>
+<h1>🖥️ Amigo Remote Control</h1>
 
 <button class="btn shutdown" onclick="setState(1)">Shutdown</button>
 <button class="btn restart" onclick="setState(2)">Restart</button>
 <button class="btn sleep" onclick="setState(3)">Sleep</button>
 <button class="btn idle" onclick="setState(0)">Idle</button>
-<button class="btn force" onclick="setState(4)">Force Quit Active</button>
 
-<input id="appInput" placeholder="chrome.exe">
-<button class="btn force" onclick="killApp()">Kill Specific App</button>
+<div id="status">Status: Loading...</div>
 
 <script>
 const API_KEY = "amigo123";
 
-async function setState(val){{
-    await fetch("/state", {{
-        method:"POST",
-        headers:{{"Content-Type":"application/json","x-api-key":API_KEY}},
-        body:JSON.stringify({{state:val}})
-    }});
-}}
+async function setState(value) {
+    await fetch("/state", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "x-api-key": API_KEY
+        },
+        body: JSON.stringify({state: value})
+    });
+    fetchState();
+}
 
-async function killApp(){{
-    let app = document.getElementById("appInput").value;
-    if(!app){{ alert("Enter app name"); return; }}
+function getText(value) {
+    return ["Idle","Shutdown","Restart","Sleep"][value] || "Unknown";
+}
 
-    await fetch("/state", {{
-        method:"POST",
-        headers:{{"Content-Type":"application/json","x-api-key":API_KEY}},
-        body:JSON.stringify({{state:5,target:app}})
-    }});
-}}
+async function fetchState() {
+    const res = await fetch("/state");
+    const data = await res.json();
+    document.getElementById("status").innerText =
+        "Status: " + getText(data.state);
+}
+
+// auto refresh every 2 sec
+setInterval(fetchState, 2000);
+fetchState();
 </script>
 
 </body>
